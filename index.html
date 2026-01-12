@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Going Balls - Мобильная версия</title>
+<style>
+body { margin:0; overflow:hidden; background:#222; }
+#score { position:absolute; top:10px; left:10px; color:white; font-size:24px; font-family:sans-serif;}
+.button {
+  position:absolute;
+  bottom:20px;
+  width:80px;
+  height:80px;
+  background:rgba(255,255,255,0.3);
+  border-radius:50%;
+  text-align:center;
+  line-height:80px;
+  font-size:32px;
+  color:white;
+  user-select:none;
+}
+#left { left:20px; }
+#right { right:20px; }
+</style>
+</head>
+<body>
+<div id="score">Очки: 0</div>
+<div class="button" id="left">◀</div>
+<div class="button" id="right">▶</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.156.0/build/three.min.js"></script>
+<script>
+// === Сцена и камера ===
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x222222);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0,5,10);
+camera.lookAt(0,0,0);
+
+// Рендер
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Свет
+const light = new THREE.DirectionalLight(0xffffff,1);
+light.position.set(10,20,10);
+scene.add(light);
+
+// Шар игрока
+const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5,16,16),
+    new THREE.MeshStandardMaterial({color:0xffaa00})
+);
+ball.position.y = 1;
+ball.position.z = 0;
+scene.add(ball);
+
+// Управление
+let moveX = 0;
+
+// Кнопки для телефона
+const btnLeft = document.getElementById('left');
+const btnRight = document.getElementById('right');
+
+btnLeft.addEventListener('touchstart',()=>moveX=-0.15);
+btnLeft.addEventListener('touchend',()=>moveX=0);
+
+btnRight.addEventListener('touchstart',()=>moveX=0.15);
+btnRight.addEventListener('touchend',()=>moveX=0);
+
+// Монетки
+let coins = [];
+
+// Препятствия
+let obstacles = [];
+
+// Трасса
+let track = [];
+const segmentLength = 3;
+const initialSegments = 20;
+for(let i=0;i<initialSegments;i++){
+    addSegment(-i*segmentLength);
+}
+
+// Очки
+let score = parseInt(localStorage.getItem('score')) || 0; // сохранение
+const scoreEl = document.getElementById('score');
+scoreEl.innerText = 'Очки: '+score;
+
+// === Функции ===
+function addSegment(zPos){
+    // Пол
+    const floor = new THREE.Mesh(
+        new THREE.BoxGeometry(3,0.5,segmentLength),
+        new THREE.MeshStandardMaterial({color:0x5555ff})
+    );
+    floor.position.z = zPos;
+    scene.add(floor);
+    track.push(floor);
+
+    // Монета
+    if(Math.random()<0.7){
+        const coin = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3,0.3,0.1,16),
+            new THREE.MeshStandardMaterial({color:0xffff00})
+        );
+        coin.rotation.x = Math.PI/2;
+        coin.position.set((Math.random()-0.5)*2.5,1,zPos);
+        scene.add(coin);
+        coins.push(coin);
+    }
+
+    // Препятствие
+    if(Math.random()<0.5){
+        const obs = new THREE.Mesh(
+            new THREE.BoxGeometry(1,1,1),
+            new THREE.MeshStandardMaterial({color:0xff0000})
+        );
+        obs.position.set((Math.random()-0.5)*2.5,0.5,zPos);
+        scene.add(obs);
+        obstacles.push(obs);
+    }
+}
+
+// Сохранение очков
+function saveScore(){
+    localStorage.setItem('score',score);
+}
+
+// Анимация
+function animate(){
+    requestAnimationFrame(animate);
+
+    // Движение шарика по X
+    ball.position.x += moveX;
+    if(ball.position.x<-1.2) ball.position.x=-1.2;
+    if(ball.position.x>1.2) ball.position.x=1.2;
+
+    // Движение вперед
+    ball.position.z -= 0.1;
+
+    // Камера
+    camera.position.z = ball.position.z + 10;
+    camera.position.x = ball.position.x;
+    camera.lookAt(ball.position.x,ball.position.y,ball.position.z);
+
+    // Проверка монет
+    coins.forEach((c,i)=>{
+        if(ball.position.distanceTo(c.position)<0.7){
+            scene.remove(c);
+            coins.splice(i,1);
+            score++;
+            scoreEl.innerText = 'Очки: '+score;
+            saveScore();
+        }
+    });
+
+    // Проверка препятствий
+    obstacles.forEach(o=>{
+        if(Math.abs(ball.position.x - o.position.x)<0.7 && Math.abs(ball.position.z - o.position.z)<1.5){
+            ball.position.z += 0.1; // остановка при столкновении
+        }
+    });
+
+    // Удаление старых сегментов
+    if(track.length>0 && track[0].position.z - ball.position.z > 10){
+        const old = track.shift();
+        scene.remove(old);
+    }
+
+    // Добавление новых сегментов вперед
+    const lastZ = track.length>0 ? track[track.length-1].position.z : 0;
+    if(lastZ - ball.position.z > -segmentLength*initialSegments){
+        addSegment(lastZ - segmentLength);
+    }
+
+    renderer.render(scene,camera);
+}
+animate();
+
+// Resize
+window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
